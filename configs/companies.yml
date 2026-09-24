@@ -1,0 +1,87 @@
+# ================================================================
+# 样本池：算力芯片概念股（A 股，12 家）
+#
+# 筛选口径：主营业务覆盖 AI 算力芯片（GPU / DCU / CPU / NPU / FPGA /
+# 内存接口与互连芯片）的设计与销售，或为算力芯片提供核心 IP 等
+# 关键环节，且在 A 股上市的样本。共 12 家，满足"至少 10 家"要求。
+# ================================================================
+
+# 报告期口径（作业要求：近两年年报与半年报）
+#   annual: 2024、2025 两个年度的年度报告（分别于 2025、2026 年披露）
+#   semi:   2025、2026 年两个半年度报告（分别于 2025、2026 年 8 月披露）
+periods:
+  annual: ["2024", "2025"]
+  semi:   ["2025", "2026"]
+
+companies:
+  - code: "688256"
+    name: "寒武纪"
+    full_name: "中科寒武纪科技股份有限公司"
+    exchange: "sse"
+    sub_theme: "AI 训练/推理芯片（思元系列）"
+
+  - code: "688041"
+    name: "海光信息"
+    full_name: "海光信息技术股份有限公司"
+    exchange: "sse"
+    sub_theme: "国产 CPU / DCU（深算系列）"
+
+  - code: "688047"
+    name: "龙芯中科"
+    full_name: "龙芯中科技术股份有限公司"
+    exchange: "sse"
+    sub_theme: "国产自主指令集 CPU"
+
+  - code: "300474"
+    name: "景嘉微"
+    full_name: "长沙景嘉微电子股份有限公司"
+    exchange: "szse"
+    sub_theme: "图形处理芯片（GPU）"
+
+  - code: "688008"
+    name: "澜起科技"
+    full_name: "澜起科技股份有限公司"
+    exchange: "sse"
+    sub_theme: "内存接口 / 高速互连芯片"
+
+  - code: "688385"
+    name: "复旦微电"
+    full_name: "上海复旦微电子集团股份有限公司"
+    exchange: "sse"
+    sub_theme: "FPGA / 安全与识别芯片"
+
+  - code: "688107"
+    name: "安路科技"
+    full_name: "上海安路信息科技股份有限公司"
+    exchange: "sse"
+    sub_theme: "FPGA 芯片与软件"
+
+  - code: "002049"
+    name: "紫光国微"
+    full_name: "紫光国芯微电子股份有限公司"
+    exchange: "szse"
+    sub_theme: "特种集成电路（FPGA 等）"
+
+  - code: "688521"
+    name: "芯原股份"
+    full_name: "芯原微电子（上海）股份有限公司"
+    exchange: "sse"
+    sub_theme: "芯片设计 IP / Chiplet"
+
+  - code: "603893"
+    name: "瑞芯微"
+    full_name: "瑞芯微电子股份有限公司"
+    exchange: "sse"
+    sub_theme: "AIoT SoC（边缘算力）"
+
+  - code: "300672"
+    name: "国科微"
+    full_name: "湖南国科微电子股份有限公司"
+    exchange: "szse"
+    sub_theme: "视频/存储/边缘算力 SoC"
+
+  - code: "688343"
+    name: "云天励飞"
+    full_name: "深圳云天励飞技术股份有限公司"
+    exchange: "sse"
+    sub_theme: "AI 推理芯片（DeepEdge 系列）"

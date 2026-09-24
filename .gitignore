@@ -1,0 +1,27 @@
+# ---- 环境（本地虚拟环境不入库） ----
+.venv*/
+venv/
+wheels/
+_tmp*
+_probe*
+_debug*
+_mineru_readme.md
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ---- 数据产物（体积大，可通过 scripts 一键重建） ----
+data/raw_pdfs/*/
+data/extracted/
+data/index/
+data/embeddings/
+data/logs/
+data/models/
+
+# ---- 其他 ----
+.DS_Store
+Thumbs.db
+*.log

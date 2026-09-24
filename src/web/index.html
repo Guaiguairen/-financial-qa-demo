@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>算力芯片财报问答知识库</title>
+<style>
+  :root {
+    --bg: #f7f4ee;
+    --card: #fffdf9;
+    --ink: #2a2622;
+    --muted: #857c70;
+    --line: #e6dfd4;
+    --accent: #8c3f4a;
+    --accent-soft: #f4e7e6;
+    --indigo: #3d5670;
+    --indigo-soft: #eef2f6;
+    --ok: #4c7a5c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    line-height: 1.75;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 20px 80px; }
+
+  header h1 {
+    font-family: "Songti SC", "SimSun", "Noto Serif SC", serif;
+    font-size: 30px;
+    letter-spacing: 1px;
+    margin: 0 0 6px;
+  }
+  header .sub { color: var(--muted); font-size: 14px; }
+  .meta-row { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill {
+    font-size: 12px; color: var(--indigo);
+    background: var(--indigo-soft);
+    border: 1px solid #dbe4ec;
+    padding: 3px 10px; border-radius: 999px;
+  }
+
+  .ask-card {
+    margin-top: 26px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 18px 14px;
+    box-shadow: 0 2px 10px rgba(60, 50, 40, 0.04);
+  }
+  textarea {
+    width: 100%; min-height: 76px; resize: vertical;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: #fff; color: var(--ink);
+    font-size: 15px; font-family: inherit; line-height: 1.7;
+    padding: 12px 14px; outline: none;
+  }
+  textarea:focus { border-color: #cbb9a8; }
+  .ask-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 12px;}
+  .hint { color: var(--muted); font-size: 12.5px; }
+  button.go {
+    background: var(--accent); color: #fff; border: 0;
+    padding: 9px 22px; border-radius: 10px;
+    font-size: 15px; cursor: pointer; letter-spacing: 2px;
+    transition: filter .15s;
+  }
+  button.go:hover { filter: brightness(1.08); }
+  button.go:disabled { opacity: .55; cursor: default; }
+
+  .examples { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .ex {
+    font-size: 12.5px; color: #6d6255;
+    background: #f2ede4; border: 1px solid #e8e1d5;
+    padding: 4px 11px; border-radius: 999px; cursor: pointer;
+    transition: background .15s;
+  }
+  .ex:hover { background: #ece5d9; }
+
+  .answer-card {
+    margin-top: 26px; display: none;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px 22px;
+    box-shadow: 0 2px 10px rgba(60, 50, 40, 0.04);
+  }
+  .answer-card.show { display: block; }
+  .q-echo { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .q-echo b { color: var(--ink); font-size: 15px; font-weight: 600; }
+  .answer-text { font-size: 15.5px; }
+  .answer-text p { margin: 8px 0; }
+  sup.cite {
+    color: var(--accent); font-weight: 700; cursor: pointer;
+    font-size: 11.5px; padding: 0 2px;
+  }
+  sup.cite:hover { text-decoration: underline; }
+
+  .sec-title {
+    font-size: 14px; color: var(--muted); letter-spacing: 2px;
+    margin: 22px 0 10px; border-top: 1px dashed var(--line); padding-top: 16px;
+  }
+  .cite-list { display: grid; gap: 10px; }
+  .cite-card {
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 10px 14px; background: #fffcf7;
+  }
+  .cite-card .head { font-size: 13.5px; font-weight: 600; }
+  .cite-card .head .tag {
+    display: inline-block; background: var(--accent-soft); color: var(--accent);
+    font-size: 11px; border-radius: 5px; padding: 1px 7px; margin-right: 8px;
+    font-weight: 700;
+  }
+  .cite-card .path { font-size: 12.5px; color: var(--indigo); margin: 3px 0 6px;}
+  .cite-card .snip { font-size: 12.5px; color: #6d6255; background: #f7f3ec; border-radius: 6px; padding: 7px 10px; white-space: pre-wrap; }
+
+  details.ev { margin-top: 14px; }
+  details.ev summary { font-size: 13px; color: var(--muted); cursor: pointer; letter-spacing: 1px;}
+  .ev-item { font-size: 12.5px; color: #5f5648; border-top: 1px dashed var(--line); padding: 8px 2px; }
+  .ev-item .m { color: var(--indigo); }
+  .ev-item .s { color: #9a9184; }
+
+  .loading { display: none; margin-top: 26px; color: var(--muted); font-size: 14px; }
+  .loading.show { display: block; }
+  .dot { animation: blink 1.2s infinite; }
+  @keyframes blink { 0%,100%{opacity:.2} 50%{opacity:1} }
+
+  footer { margin-top: 50px; color: #a49a8c; font-size: 12px; line-height: 1.9; }
+  footer b { color: #8a8177; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>算力芯片财报问答知识库</h1>
+    <div class="sub">基于年报 / 半年报全文的混合检索（Qwen3-Embedding 向量 + BM25 倒排），答案自动标注引用出处（公司 · 章节 · 页码）</div>
+    <div class="meta-row" id="metaRow"></div>
+  </header>
+
+  <div class="ask-card">
+    <textarea id="q" placeholder="输入你的问题，例如：寒武纪2025年营业收入是多少？同比增长多少？"></textarea>
+    <div class="ask-foot">
+      <span class="hint">检索 12 家算力芯片公司的 48 份报告 · 回答只依据报告原文，并给出处</span>
+      <button class="go" id="btn">提 问</button>
+    </div>
+    <div class="examples" id="examples"></div>
+  </div>
+
+  <div class="loading" id="loading">正在检索并生成回答<span class="dot">…</span></div>
+
+  <div class="answer-card" id="answerCard">
+    <div class="q-echo">问题：<b id="qEcho"></b></div>
+    <div class="answer-text" id="answerText"></div>
+    <div class="sec-title">引 用 出 处</div>
+    <div class="cite-list" id="citeList"></div>
+    <details class="ev"><summary>召回证据（混合检索 Top 块）</summary><div id="evList"></div></details>
+  </div>
+
+  <footer>
+    <b>数据来源</b>：巨潮资讯网（沪深交易所指定信息披露平台），自动抓取 12 家算力芯片概念股的 2024 / 2025 年度报告与 2025 / 2026 半年度报告全文。<br>
+    <b>技术链路</b>：MinerU 结构化解析（表格行列还原）→ 带公司 / 章节 / 页码元数据的切块 → Qwen3-Embedding-0.6B 向量 + jieba/BM25 混合检索 → 本地 Qwen3-1.7B 基于证据生成答案。
+  </footer>
+</div>
+
+<script>
+const EXAMPLES = [
+  "寒武纪2025年的营业收入是多少？同比增速是多少？",
+  "海光信息2025年的研发投入占营业收入比例是多少？",
+  "澜起科技2025年互连类芯片业务的收入是多少？",
+  "对比寒武纪与海光信息2025年的营业收入规模与增速。",
+  "12家公司中，2025年营业收入增速最高的是哪几家？",
+  "龙芯中科2025年上半年的营业收入和归母净利润情况？"
+];
+
+const $ = (id) => document.getElementById(id);
+
+function renderMeta(st) {
+  const items = [
+    `${st.n_companies} 家公司`,
+    `${st.n_docs} 份报告`,
+    `${st.n_pages.toLocaleString()} 页`,
+    `${st.n_chunks.toLocaleString()} 个知识块`,
+    `嵌入：${st.embedding_model}`,
+    `生成：${st.llm}`,
+  ];
+  $("metaRow").innerHTML = items.map(t => `<span class="pill">${t}</span>`).join("");
+}
+
+function initExamples() {
+  $("examples").innerHTML = EXAMPLES.map(q => `<span class="ex">${q}</span>`).join("");
+  document.querySelectorAll(".ex").forEach(el => {
+    el.onclick = () => { $("q").value = el.textContent; ask(); };
+  });
+}
+
+function escapeHtml(s) {
+  return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function renderAnswer(text) {
+  let html = escapeHtml(text);
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\[(\d{1,2})\]/g, '<sup class="cite" data-i="$1">[$1]</sup>');
+  return html.split(/\n{2,}/).map(p => `<p>${p.replaceAll("\n", "<br>")}</p>`).join("");
+}
+
+function renderCitations(cites) {
+  if (!cites.length) {
+    $("citeList").innerHTML = `<div class="hint">模型未标注引用（可能资料不足）。请参考下方召回证据。</div>`;
+    return;
+  }
+  $("citeList").innerHTML = cites.map(c => `
+    <div class="cite-card" id="cite-${c.idx}">
+      <div class="head"><span class="tag">[${c.idx}]</span>${c.company}《${c.report_label}》</div>
+      <div class="path">${c.section} · 第 ${c.page} 页 · ${c.type === "table" ? "表格" : "正文"}</div>
+      <div class="snip">${escapeHtml(c.snippet || "")}</div>
+    </div>`).join("");
+}
+
+function renderEvidence(evs) {
+  $("evList").innerHTML = evs.map((e, i) => `
+    <div class="ev-item">
+      <span class="m">[${i + 1}]</span> ${e.company}《${e.report_label}》 · ${e.section} · 第${e.page}页 · ${e.type}
+      <span class="s">（score=${e.score}，向量#${e.vec_rank ?? "-"}，BM25#${e.bm25_rank ?? "-"}）</span><br>
+      ${escapeHtml((e.text || "").slice(0, 120))}…
+    </div>`).join("");
+}
+
+async function ask() {
+  const q = $("q").value.trim();
+  if (!q) { $("q").focus(); return; }
+  $("btn").disabled = true;
+  $("loading").classList.add("show");
+  $("answerCard").classList.remove("show");
+  try {
+    const r = await fetch("/api/ask", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q })
+    });
+    const data = await r.json();
+    if (data.error) { alert(data.error); return; }
+    $("qEcho").textContent = q;
+    $("answerText").innerHTML = renderAnswer(data.answer || "（未生成回答）");
+    renderCitations(data.citations || []);
+    renderEvidence(data.evidence || []);
+    $("answerCard").classList.add("show");
+    document.querySelectorAll("sup.cite").forEach(el => {
+      el.onclick = () => {
+        const t = document.getElementById("cite-" + el.dataset.i);
+        if (t) t.scrollIntoView({ behavior: "smooth", block: "center" });
+      };
+    });
+  } catch (e) {
+    alert("请求失败：" + e);
+  } finally {
+    $("btn").disabled = false;
+    $("loading").classList.remove("show");
+  }
+}
+
+$("btn").onclick = ask;
+$("q").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ask();
+});
+fetch("/api/status").then(r => r.json()).then(renderMeta).catch(() => {});
+initExamples();
+</script>
+</body>
+</html>

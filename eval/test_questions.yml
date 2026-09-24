@@ -1,0 +1,79 @@
+# ================================================================
+# 评测题集：10 道测试题（其中 3 道跨公司全景题）
+# 说明：
+#   - type: single（单公司事实题）/ cross（跨公司全景题）
+#   - k: 该题的检索候选数（全景题提高召回规模）
+#   - expected_doc: 期望命中的报告（用于人工核对召回质量）
+#   - ground_truth: 依据报告原文整理的标准答案要点（评测时人工核对）
+# ================================================================
+
+questions:
+  - id: q01
+    type: single
+    question: "寒武纪2025年的营业收入是多少？同比增长多少？"
+    k: 8
+    expected_doc: "688256_2025_annual"
+    ground_truth: "约 649,719.62 万元（约 64.97 亿元），同比增长约 453.21%（以年报原文为准）"
+
+  - id: q02
+    type: single
+    question: "海光信息2025年的研发投入总额是多少？占营业收入的比例是多少？"
+    k: 8
+    expected_doc: "688041_2025_annual"
+    ground_truth: "以 2025 年报'研发投入情况'披露为准（待核）"
+
+  - id: q03
+    type: single
+    question: "澜起科技2025年互连类芯片产品线的营业收入是多少？"
+    k: 8
+    expected_doc: "688008_2025_annual"
+    ground_truth: "以 2025 年报分产品收入表为准（待核）"
+
+  - id: q04
+    type: single
+    question: "龙芯中科2025年上半年实现营业收入多少？归母净利润是多少？"
+    k: 8
+    expected_doc: "688047_2025_semi"
+    ground_truth: "以 2025 半年报主要会计数据为准（待核）"
+
+  - id: q05
+    type: single
+    question: "景嘉微2025年的营业收入和归属于上市公司股东的净利润分别是多少？"
+    k: 8
+    expected_doc: "300474_2025_annual"
+    ground_truth: "以 2025 年报主要会计数据为准（待核）"
+
+  - id: q06
+    type: single
+    question: "紫光国微2025年特种集成电路业务的收入是多少？毛利率是多少？"
+    k: 8
+    expected_doc: "002049_2025_annual"
+    ground_truth: "以 2025 年报分行业/分产品经营情况表为准（待核）"
+
+  - id: q07
+    type: single
+    question: "芯原股份2025年实现营业收入多少？同比增长多少？"
+    k: 8
+    expected_doc: "688521_2025_annual"
+    ground_truth: "以 2025 年报为准（待核）"
+
+  - id: q08
+    type: single
+    question: "云天励飞2026年上半年营业收入和归母净利润分别是多少？"
+    k: 8
+    expected_doc: "688343_2026_semi"
+    ground_truth: "以 2026 半年报主要会计数据为准（待核）"
+
+  - id: q09
+    type: cross
+    question: "对比寒武纪、海光信息、澜起科技、瑞芯微四家公司2025年的营业收入规模与同比增速，哪家增速最高？"
+    k: 20
+    expected_doc: "688256_2025_annual / 688041_2025_annual / 688008_2025_annual / 603893_2025_annual"
+    ground_truth: "四家 2025 年营收及增速对比，增速最高者以年报数据为准（待核）"
+
+  - id: q10
+    type: cross
+    question: "算力芯片样本公司中，2025年研发投入占营业收入比重最高的是哪家？请列出各家的研发费用率。"
+    k: 24
+    expected_doc: "12 家 2025 年年报"
+    ground_truth: "各公司研发费用率对比，最高者以年报数据为准（待核）"
