@@ -75,9 +75,14 @@ def build_embeddings(chunks: list[dict], device: str, batch_size: int, logger,
             out = model(**enc)
             last = out.last_hidden_state
             mask = enc["attention_mask"]
-            # Qwen3-Embedding：取每条序列最后一个有效 token 的隐状态
-            seq_len = mask.sum(dim=1) - 1
-            vec = last[torch.arange(last.size(0), device=device), seq_len].float()
+            # Qwen3-Embedding 官方池化：左填充取最后一列；右填充按长度取最后一个有效 token
+            # （左填充下每个序列的最后一个位置一定是真实 token，直接取 [:, -1]）
+            left_padding = bool(mask[:, -1].sum() == mask.shape[0])
+            if left_padding:
+                vec = last[:, -1].float()
+            else:
+                seq_len = mask.sum(dim=1) - 1
+                vec = last[torch.arange(last.size(0), device=device), seq_len].float()
             vec = F.normalize(vec, p=2, dim=1)
             all_vecs.append(vec.cpu().numpy().astype(np.float16))
             if dim is None:

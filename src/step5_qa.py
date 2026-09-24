@@ -38,21 +38,25 @@ from src import common  # noqa: E402
 from src.step4_build_index import EMB_MODEL_DIR, QUERY_TASK, bm25_search  # noqa: E402
 
 RRF_K = 60          # RRF 平滑参数
-K_EACH = 50         # 每路召回的候选数
+K_EACH = 80         # 每路召回的候选数（80 相对 50 可接住临界块，实测少漏召）
 
 DEFAULT_DEEPSEEK_BASE = "https://api.deepseek.com"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-chat"
-DEEPSEEK_KEY_FILE = common.DATA_DIR / "config" / "deepseek.json"
+DEEPSEEK_KEY_FILE = common.DATA_DIR / "config" / "deepseek.json"      # 推荐位置（已 gitignore）
+DEEPSEEK_KEY_FILE_ALT = common.ROOT / "configs" / "deepseek.json"     # 兼容位置（同样 gitignore）
 
 
 def load_deepseek_key() -> str:
-    """读取 DeepSeek API Key：环境变量优先，其次 data/config/deepseek.json。"""
+    """读取 DeepSeek API Key：环境变量优先，其次本地配置文件（两个位置均可）。"""
     key = (os.environ.get("DEEPSEEK_API_KEY") or "").strip()
-    if not key and DEEPSEEK_KEY_FILE.exists():
-        try:
-            key = (json.loads(DEEPSEEK_KEY_FILE.read_text(encoding="utf-8")).get("api_key") or "").strip()
-        except Exception:  # noqa: BLE001
-            key = ""
+    for path in (DEEPSEEK_KEY_FILE, DEEPSEEK_KEY_FILE_ALT):
+        if key:
+            break
+        if path.exists():
+            try:
+                key = (json.loads(path.read_text(encoding="utf-8")).get("api_key") or "").strip()
+            except Exception:  # noqa: BLE001
+                key = ""
     return key
 
 
@@ -74,6 +78,11 @@ class HybridRetriever:
         self._model = None
         cfg = common.load_config()
         self.company_names = [c["name"] for c in cfg["companies"]]
+        # 公司 → chunk 索引分组（全景题均衡召回用）
+        groups: dict[str, list[int]] = {}
+        for idx, c in enumerate(self.chunks):
+            groups.setdefault(c["company"], []).append(idx)
+        self.company_index: dict[str, np.ndarray] = {k: np.asarray(v) for k, v in groups.items()}
 
     # ---------- 查询向量化 ----------
     def _ensure_embedder(self):
@@ -98,8 +107,13 @@ class HybridRetriever:
                             return_tensors="pt").to(self.emb_device)
             out = self._model(**enc)
             mask = enc["attention_mask"]
-            seq_len = mask.sum(dim=1) - 1
-            vec = out.last_hidden_state[torch.arange(1, device=self.emb_device), seq_len].float()
+            # 与建库端保持一致的官方池化：左填充取最后一列，右填充按长度取最后有效 token
+            left_padding = bool(mask[:, -1].sum() == mask.shape[0])
+            if left_padding:
+                vec = out.last_hidden_state[:, -1].float()
+            else:
+                seq_len = mask.sum(dim=1) - 1
+                vec = out.last_hidden_state[torch.arange(1, device=self.emb_device), seq_len].float()
             vec = F.normalize(vec, p=2, dim=1)
         return vec[0].cpu().numpy().astype(np.float32)
 
@@ -126,12 +140,14 @@ class HybridRetriever:
             bm_rank[i] = rank
             fused[i] = fused.get(i, 0.0) + 1.0 / (rrf_k + rank + 1)
 
-        # 4) 公司名提及加权（问题中出现的公司，其块获得小幅加成）
+        # 4) 公司名提及加权：问题中出现的公司块获得加成；点名提问时抑制其他公司干扰
         mentioned = [name for name in self.company_names if name in query]
         if mentioned:
             for i in fused:
                 if self.chunks[i]["company"] in mentioned:
                     fused[i] += company_boost / (rrf_k + 1)
+                else:
+                    fused[i] -= 0.2 / (rrf_k + 1)
 
         # 5) 报告期间消歧：问题未指明“半年/中期”时默认偏好年度报告，反之亦然
         semi_words = ("半年", "中期", "中报", "上半", "H1", "半期")
@@ -154,14 +170,38 @@ class HybridRetriever:
                 if "归属于上市公司股东的净利润" in (self.chunks[i]["text"] or ""):
                     fused[i] += 0.35 / (rrf_k + 1)
 
-        ranked = sorted(fused.items(), key=lambda x: -x[1])[:k]
+        # 8) 精确期间加权：查询中的年份 + 期间类型与报告标签精确匹配时追加加成
+        years = sorted(set(re.findall(r"(20\d{2})", query)))
+        if years:
+            tag = "半年度报告" if any(w in query for w in semi_words) else "年度报告"
+            for i in fused:
+                lbl = self.chunks[i]["report_label"]
+                if any(f"{y}年{tag}" in lbl for y in years):
+                    fused[i] += 0.5 / (rrf_k + 1)
+
+        # 9) 全景题公司均衡召回：问题未点名公司但涉及跨公司比较时，
+        #    按公司逐家取最相关块（每公司先保 1 块，再补第二块），保证多家公司进入证据
+        panorama_kw = ("样本公司", "各公司", "哪家", "哪些", "排名", "最高", "最低", "对比", "比较")
+        if not mentioned and any(w in query for w in panorama_kw):
+            firsts: list[tuple[int, float]] = []
+            seconds: list[tuple[int, float]] = []
+            for _comp, idxs in self.company_index.items():
+                order = idxs[np.argsort(-sims[idxs])]
+                firsts.append((int(order[0]), float(sims[order[0]])))
+                if len(order) > 1:
+                    seconds.append((int(order[1]), float(sims[order[1]])))
+            firsts.sort(key=lambda x: -x[1])
+            seconds.sort(key=lambda x: -x[1])
+            ranked = (firsts + seconds)[:k]
+        else:
+            ranked = sorted(fused.items(), key=lambda x: -x[1])[:k]
         out = []
         for i, score in ranked:
             c = self.chunks[i]
             out.append({
                 "chunk_id": c["chunk_id"], "score": round(float(score), 6),
                 "vec_rank": vec_rank.get(i), "bm25_rank": bm_rank.get(i),
-                "vec_sim": round(float(sims[i]), 4) if i in set(vec_rank) else None,
+                "vec_sim": round(float(sims[i]), 4),
                 "company": c["company"], "code": c["code"], "doc_id": c["doc_id"],
                 "report_label": c["report_label"], "section": c["section"],
                 "page": c["page"], "type": c["type"], "text": c["text"],
@@ -200,11 +240,14 @@ class AnswerEngine:
 
     @property
     def configured(self) -> bool:
+        if not self.api_key:
+            self.api_key = load_deepseek_key()  # 支持运行中补充 Key
         return bool(self.api_key)
 
     def generate(self, question: str, evidence: list[dict], max_new_tokens: int = 1200,
                  total_ctx_chars: int = 12000, max_chunks: int = 16) -> str:
         if not self.api_key:
+            self.api_key = load_deepseek_key()
             raise RuntimeError(
                 "未找到 DeepSeek API Key：请设置环境变量 DEEPSEEK_API_KEY，"
                 f"或写入 {DEEPSEEK_KEY_FILE}（内容：{{\"api_key\": \"sk-...\"}}）")

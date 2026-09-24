@@ -28,3 +28,6 @@ data/config/
 Thumbs.db
 *.log
 *.zip
+
+# ---- 敏感配置（API Key 等，永不入库/不入交付包） ----
+configs/deepseek.json

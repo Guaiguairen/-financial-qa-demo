@@ -232,9 +232,12 @@ async function ask() {
   $("loading").classList.add("show");
   $("answerCard").classList.remove("show");
   try {
+    const payload = { question: q };
+    const kParam = params.get("k");
+    if (kParam) payload.k = parseInt(kParam, 10) || undefined;
     const r = await fetch("/api/ask", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q })
+      body: JSON.stringify(payload)
     });
     const data = await r.json();
     if (data.error) { alert(data.error); return; }
