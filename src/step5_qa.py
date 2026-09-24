@@ -3,8 +3,14 @@
 
 - HybridRetriever：Qwen3-Embedding-0.6B 向量检索 + BM25 倒排检索，RRF 融合，
   支持公司名提及加权；返回带完整元数据（公司/章节/页码）的召回块。
-- AnswerEngine：本地 Qwen3-1.7B，严格依据召回证据生成答案，输出 [n] 引用标记。
+- AnswerEngine：基于 DeepSeek API（OpenAI 兼容接口）生成答案，严格依据召回证据，
+  输出 [n] 引用标记。
 - answer_question()：一站式接口，供问答页面（app.py）与评测（eval）复用。
+
+API Key 配置（二选一）：
+    $env:DEEPSEEK_API_KEY = "sk-..."            # 环境变量（推荐）
+    data/config/deepseek.json  {"api_key": "sk-..."}}   # 本地配置文件
+可选环境变量：DEEPSEEK_MODEL（默认 deepseek-chat）、DEEPSEEK_BASE_URL。
 
 CLI 调试：
     python src/step5_qa.py "寒武纪2025年营业收入是多少？" --k 8
@@ -14,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pickle
 import re
 import sys
@@ -21,6 +28,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import requests
 
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
@@ -29,10 +37,23 @@ if str(_ROOT) not in sys.path:
 from src import common  # noqa: E402
 from src.step4_build_index import EMB_MODEL_DIR, QUERY_TASK, bm25_search  # noqa: E402
 
-LLM_DIR = common.DATA_DIR / "models" / "Qwen3-1.7B"
-
 RRF_K = 60          # RRF 平滑参数
 K_EACH = 50         # 每路召回的候选数
+
+DEFAULT_DEEPSEEK_BASE = "https://api.deepseek.com"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-chat"
+DEEPSEEK_KEY_FILE = common.DATA_DIR / "config" / "deepseek.json"
+
+
+def load_deepseek_key() -> str:
+    """读取 DeepSeek API Key：环境变量优先，其次 data/config/deepseek.json。"""
+    key = (os.environ.get("DEEPSEEK_API_KEY") or "").strip()
+    if not key and DEEPSEEK_KEY_FILE.exists():
+        try:
+            key = (json.loads(DEEPSEEK_KEY_FILE.read_text(encoding="utf-8")).get("api_key") or "").strip()
+        except Exception:  # noqa: BLE001
+            key = ""
+    return key
 
 
 # ================================================================ 检索
@@ -150,7 +171,7 @@ class HybridRetriever:
         return out
 
 
-# ================================================================ 生成
+# ================================================================ 生成（DeepSeek API）
 SYSTEM_PROMPT = (
     "你是一名严谨的金融财报问答助手。请严格依据用户提供的【资料】回答问题：\n"
     "1. 只使用【资料】中明确出现的信息，禁止编造数字、名称或引入资料之外的知识；\n"
@@ -163,63 +184,78 @@ SYSTEM_PROMPT = (
 
 
 class AnswerEngine:
-    """本地 Qwen3-1.7B 答案生成器。"""
+    """基于 DeepSeek API 的答案生成器（OpenAI 兼容接口）。
 
-    def __init__(self, device: str = "cuda"):
-        self.device = device
-        self._tok = None
-        self._model = None
+    证据预算：默认最多 16 块、合计 ≤12000 字——API 上下文充裕，
+    该预算主要用于控制成本与信噪比，可随 API 参数调整。
+    """
 
-    def _ensure(self):
-        if self._model is not None:
-            return
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+    def __init__(self, model: str | None = None, timeout: int = 180):
+        self.api_key = load_deepseek_key()
+        self.model = model or os.environ.get("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL)
+        self.base_url = os.environ.get("DEEPSEEK_BASE_URL", DEFAULT_DEEPSEEK_BASE).rstrip("/")
+        self.timeout = timeout
+        self.last_stats: dict | None = None
+        self._session = requests.Session()
 
-        self._tok = AutoTokenizer.from_pretrained(str(LLM_DIR))
-        self._model = AutoModelForCausalLM.from_pretrained(str(LLM_DIR), dtype=torch.float16)
-        self._model = self._model.to(self.device).eval()
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key)
 
-    def generate(self, question: str, evidence: list[dict], max_new_tokens: int = 640,
-                 total_ctx_chars: int = 3000, max_chunks: int = 10) -> str:
-        """证据预算控制：合成只用前 max_chunks 条证据，且全部证据合计不超过
-        total_ctx_chars 字符（逐条均分）。经实测，提示词超过 ~2.4k token 后
-        6GB 显存会退化到 WDDM 换页甚至 OOM（生成速度 13 tok/s → 0.5 tok/s）。"""
-        import torch
-
-        self._ensure()
+    def generate(self, question: str, evidence: list[dict], max_new_tokens: int = 1200,
+                 total_ctx_chars: int = 12000, max_chunks: int = 16) -> str:
+        if not self.api_key:
+            raise RuntimeError(
+                "未找到 DeepSeek API Key：请设置环境变量 DEEPSEEK_API_KEY，"
+                f"或写入 {DEEPSEEK_KEY_FILE}（内容：{{\"api_key\": \"sk-...\"}}）")
         evidence = evidence[:max_chunks]
-        per = max(200, total_ctx_chars // max(1, len(evidence)))
+        per = max(400, total_ctx_chars // max(1, len(evidence)))
         parts = []
         for i, e in enumerate(evidence):
             text = (e["text"] or "")[:per]
             parts.append(f"[{i + 1}] 《{e['company']}》{e['report_label']}｜{e['section']}｜第{e['page']}页\n{text}")
         user = f"【问题】{question}\n\n【资料】\n" + "\n\n".join(parts)
-        messages = [{"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user}]
-        try:
-            prompt = self._tok.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)
-        except TypeError:
-            prompt = self._tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        with torch.no_grad():
-            inputs = self._tok([prompt], return_tensors="pt").to(self.device)
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                         {"role": "user", "content": user}],
+            "temperature": 0.0,
+            "max_tokens": max_new_tokens,
+            "stream": False,
+        }
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+        last_err: Exception | None = None
+        for attempt in range(3):
             t0 = time.time()
-            out = self._model.generate(
-                **inputs, max_new_tokens=max_new_tokens, do_sample=False,
-                repetition_penalty=1.05, eos_token_id=self._tok.eos_token_id)
+            try:
+                r = self._session.post(f"{self.base_url}/chat/completions",
+                                       json=payload, headers=headers, timeout=self.timeout)
+            except requests.RequestException as e:
+                last_err = e
+                time.sleep(2 * (attempt + 1))
+                continue
+            if r.status_code == 401:
+                raise RuntimeError("DeepSeek API 鉴权失败（401）：请检查 API Key 是否正确或已过期")
+            if r.status_code == 402:
+                raise RuntimeError("DeepSeek API 余额不足（402）：请前往 DeepSeek 平台充值")
+            if r.status_code in (429, 500, 502, 503):
+                last_err = RuntimeError(f"DeepSeek API 暂时不可用（HTTP {r.status_code}）")
+                time.sleep(2 * (attempt + 1))
+                continue
+            r.raise_for_status()
+            data = r.json()
+            text = (data["choices"][0]["message"]["content"] or "").strip()
+            usage = data.get("usage") or {}
             self.last_stats = {
-                "prompt_tokens": int(inputs["input_ids"].shape[1]),
-                "new_tokens": int(out.shape[1] - inputs["input_ids"].shape[1]),
-                "seconds": round(time.time() - t0, 1),
+                "model": self.model,
+                "prompt_tokens": usage.get("prompt_tokens"),
+                "completion_tokens": usage.get("completion_tokens"),
+                "total_tokens": usage.get("total_tokens"),
+                "seconds": round(time.time() - t0, 2),
             }
-        gen = out[0][inputs["input_ids"].shape[1]:]
-        text = self._tok.decode(gen, skip_special_tokens=True).strip()
-        try:
-            torch.cuda.empty_cache()  # 释放本次生成的临时显存，防止累积碎片
-        except Exception:  # noqa: BLE001
-            pass
-        return text
+            return text
+        raise RuntimeError(f"DeepSeek API 调用失败（已重试）：{last_err}")
 
 
 # ================================================================ 一站式
@@ -264,7 +300,7 @@ def main() -> None:
     args = ap.parse_args()
 
     retriever = HybridRetriever(device=args.device)
-    gen = None if args.retrieve_only else AnswerEngine(device=args.device)
+    gen = None if args.retrieve_only else AnswerEngine()
     res = answer_question(args.question, retriever, gen, k=args.k, retrieve_only=args.retrieve_only)
 
     print("=" * 80)
@@ -276,6 +312,9 @@ def main() -> None:
         print("引用出处:")
         for c in res["citations"]:
             print(f"  [{c['idx']}] {c['company']}《{c['report_label']}》 {c['section']} 第{c['page']}页")
+        if gen is not None and gen.last_stats:
+            print("-" * 80)
+            print("生成统计:", gen.last_stats)
     print("-" * 80)
     print("召回块:")
     for i, e in enumerate(res["evidence"], 1):

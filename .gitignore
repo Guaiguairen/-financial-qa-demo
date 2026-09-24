@@ -21,6 +21,7 @@ data/index/
 data/embeddings/
 data/logs/
 data/models/
+data/config/
 
 # ---- 其他 ----
 .DS_Store

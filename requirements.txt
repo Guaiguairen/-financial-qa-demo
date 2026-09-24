@@ -2,7 +2,11 @@
 # 安装：
 #   uv venv .venv-kb --python 3.12
 #   uv pip install --python .venv-kb\Scripts\python.exe -r requirements.txt
-# torch（CUDA 版）需单独安装，见 README「环境准备」一节。
+# torch（CUDA 版）用于本地嵌入模型推理（Qwen3-Embedding-0.6B），需单独安装，见 README。
+#
+# 生成模型为 DeepSeek API（OpenAI 兼容接口），需配置（二选一）：
+#   $env:DEEPSEEK_API_KEY = "sk-..."
+#   data/config/deepseek.json  {"api_key": "sk-..."}
 
 requests==2.34.2
 pyyaml==6.0.3

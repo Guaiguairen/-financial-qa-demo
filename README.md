@@ -6,7 +6,7 @@
 2. 使用 **MinerU 4.0（本地部署）** 完成版面分析与表格结构化抽取（表格按行列还原为 HTML）；
 3. 构建 **Qwen3-Embedding-0.6B 向量索引 + BM25 倒排索引**的混合检索知识库，
    每个文本块携带**公司、章节标题、页码**三类元数据；
-4. 提供**问答页面**（Flask），由本地 **Qwen3-1.7B** 生成回答，自动标注引用出处（公司 / 章节 / 页码）；
+4. 提供**问答页面**（Flask），调用 **DeepSeek API** 生成回答，自动标注引用出处（公司 / 章节 / 页码）；
 5. 设计 **10 道测试题**（含 2 道跨公司全景题）并逐题记录召回块、正误与错误原因。
 
 ## 交付物对照
@@ -57,7 +57,13 @@ uv pip install --python .venv-mineru\Scripts\python.exe torch torchvision --inde
 $env:MINERU_MODEL_SOURCE="modelscope"; .venv-mineru\Scripts\mineru-kit.exe models download --tier basic
 ```
 
-模型（问答用）经 ModelScope 下载至 `data/models/`：`Qwen/Qwen3-Embedding-0.6B`、`Qwen/Qwen3-1.7B`。
+模型（检索用）经 ModelScope 下载至 `data/models/`：`Qwen/Qwen3-Embedding-0.6B`。
+生成由 DeepSeek API 完成，配置 Key（二选一）：
+
+```powershell
+$env:DEEPSEEK_API_KEY = "sk-..."                 # 环境变量（推荐）
+# 或写入 data/config/deepseek.json：{"api_key": "sk-..."}
+```
 
 ## 一键复现流水线
 
@@ -91,7 +97,7 @@ $env:MINERU_MODEL_SOURCE="modelscope"; .venv-mineru\Scripts\mineru-kit.exe model
 | 切块 | 页内合并（目标 800 字）、跨页不合并（页码引用唯一）、表格独立成块；标题启发式 + MinerU 标注双通道（层级重映射 + 噪声过滤） |
 | 索引 | Qwen3-Embedding-0.6B（文档含轻量上下文头；查询加任务指令前缀）；jieba/BM25（公司/章节字段加权）；向量 fp16 |
 | 检索 | RRF 融合 + 三类加权：公司名提及（+0.30/61）、期间消歧（+0.50/61）、叙述型对比数据（+0.20/61）、归母口径定向（+0.35/61） |
-| 生成 | 本地 Qwen3-1.7B（关闭思考模式）；证据预算：≤10 块、合计 ≤3000 字（6GB 显存实测边界，详见报告）；贪心解码 |
+| 生成 | DeepSeek API（deepseek-chat，temperature=0）；证据预算：≤16 块、合计 ≤12000 字（成本与信噪比控制）；输出 [n] 引用标记 |
 | 页面 | Flask + 原生前端；答案内 [n] 引用可点击定位；展示召回证据与检索得分 |
 
 ## 评测摘要
@@ -103,8 +109,7 @@ $env:MINERU_MODEL_SOURCE="modelscope"; .venv-mineru\Scripts\mineru-kit.exe model
 ## 已知边界
 
 - `data/` 下的大体量产物（PDF、抽取结果、索引、模型）不入 git，可由上述脚本重建；
-- 6GB 显存环境下生成模型的证据预算有限（提示词超过约 2.4k token 触发显存换页），
-  这构成"证据完整性 vs 生成稳定性"的权衡，是本系统明显的改进方向；
+- 生成依赖外部 API（需网络与 Key），检索与嵌入（Qwen3-Embedding + BM25）完全本地运行；
 - 个别 PDF 源文件存在字符错序（如数字"632,,.225584"），两个解析档位均无法修复。
 
 ## 运行环境备注
