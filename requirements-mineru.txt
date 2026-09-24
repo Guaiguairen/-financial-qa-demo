@@ -1,0 +1,14 @@
+# 抽取环境（Python 3.12）：MinerU 4.x（本地解析，PyTorch/CUDA 加速）
+# 安装：
+#   uv venv .venv-mineru --python 3.12
+#   uv pip install --python .venv-mineru\Scripts\python.exe -r requirements-mineru.txt
+# torch（CUDA 版）需单独安装，见 README「环境准备」一节。
+# 模型下载（ModelScope 源）：
+#   $env:MINERU_MODEL_SOURCE="modelscope"; mineru-kit models download --tier basic
+
+mineru==4.0.6
+docvortex==0.4.24
+onnxruntime==1.30.0
+opencv-python==5.0.0.93
+mineru-llama-cpp==0.1.2
+mineru-vl-utils==2.0.5

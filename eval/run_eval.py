@@ -11,6 +11,11 @@
 """
 from __future__ import annotations
 
+import os
+
+# 抗显存碎片：必须在 torch 初始化前设置
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import argparse
 import csv
 import json
@@ -39,12 +44,12 @@ def main() -> None:
     args = ap.parse_args()
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    qs = yaml.safe_load(Path(__file__).parent / "test_questions.yml")["questions"]
+    qs = yaml.safe_load((Path(__file__).parent / "test_questions.yml").read_text(encoding="utf-8"))["questions"]
     if args.only:
         keep = {x.strip() for x in args.only.split(",")}
         qs = [q for q in qs if q["id"] in keep]
 
-    retriever = HybridRetriever(device=args.device)
+    retriever = HybridRetriever(device=args.device, emb_device="cpu")
     gen = None if args.retrieve_only else AnswerEngine(device=args.device)
 
     records = []
@@ -66,6 +71,12 @@ def main() -> None:
             ],
         }
         records.append(rec)
+        try:
+            import torch
+
+            torch.cuda.empty_cache()  # 逐题清理显存碎片
+        except Exception:  # noqa: BLE001
+            pass
         print(f"[{q['id']}] {res['elapsed_s']}s  答案长度 {len(res['answer'] or '')}")
         if res["answer"]:
             print("   ", res["answer"][:160].replace("\n", " "))

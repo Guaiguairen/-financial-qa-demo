@@ -215,10 +215,12 @@ def chunk_document(blocks: list[dict], doc_meta: dict, target_len: int = 800,
             level = None
         if level is not None:
             flush("boundary")
+            # 上游偶发的行序断裂（如 "27\n、收入"）→ 短标题去除内部换行
+            title = text.replace("\n", "") if len(text) <= 40 else text
             if level >= 2:  # 文档级标题（doc_title）不进章节栈
-                tracker.update(level, text)
+                tracker.update(level, title)
                 prev_level = level
-            buf.append({**b, "text": text})  # 标题文本并入后续块，增强上下文
+            buf.append({**b, "text": title})  # 标题文本并入后续块，增强上下文
             continue
 
         buf.append({**b, "text": text})

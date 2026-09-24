@@ -263,6 +263,14 @@ $("q").addEventListener("keydown", (e) => {
 });
 fetch("/api/status").then(r => r.json()).then(renderMeta).catch(() => {});
 initExamples();
+
+// 支持 ?q=问题 直接提问（用于自动化截图）
+const params = new URLSearchParams(location.search);
+const autoQ = params.get("q");
+if (autoQ) {
+  $("q").value = autoQ;
+  setTimeout(ask, 800);
+}
 </script>
 </body>
 </html>

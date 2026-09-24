@@ -16,6 +16,7 @@ __pycache__/
 # ---- 数据产物（体积大，可通过 scripts 一键重建） ----
 data/raw_pdfs/*/
 data/extracted/
+data/chunks/
 data/index/
 data/embeddings/
 data/logs/
@@ -25,3 +26,4 @@ data/models/
 .DS_Store
 Thumbs.db
 *.log
+*.zip

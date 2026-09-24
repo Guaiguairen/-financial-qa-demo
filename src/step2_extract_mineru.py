@@ -215,7 +215,10 @@ def extract_doc(doc_id: str, m: dict, tier: str, pages: str, logger,
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="MinerU 结构化抽取")
-    ap.add_argument("--tier", default="basic", choices=["flash", "basic", "standard", "advanced"])
+    # 档位说明：本数据集（电子版 PDF）实测 flash 与 basic 的表格输出逐字节一致，
+    # 而 flash 为原生解析路径，速度与内存优势显著（basic 的差异主要在标题标注）。
+    # 详见 README「解析档位选择」。
+    ap.add_argument("--tier", default="flash", choices=["flash", "basic", "standard", "advanced"])
     ap.add_argument("--docs", default="", help="指定 doc_id，逗号分隔")
     ap.add_argument("--pages", default="all", help="页码范围（调试用），如 1-20")
     ap.add_argument("--workers", type=int, default=1, help="并发数（默认 1；注意内存）")

@@ -8,6 +8,11 @@
 """
 from __future__ import annotations
 
+import os
+
+# 抗显存碎片：必须在 torch 初始化前设置
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import argparse
 import json
 import sys
@@ -34,7 +39,7 @@ _lock = threading.Lock()
 def get_state(device: str = "cuda") -> dict:
     if not _state:
         t0 = time.time()
-        _state["retriever"] = HybridRetriever(device=device)
+        _state["retriever"] = HybridRetriever(device=device, emb_device="cpu")
         _state["generator"] = AnswerEngine(device=device)
         _state["load_s"] = round(time.time() - t0, 1)
         print(f"[app] 模型加载完成，用时 {_state['load_s']}s")

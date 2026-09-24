@@ -17,6 +17,7 @@ import json
 import pickle
 import re
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -60,8 +61,9 @@ class HybridRetriever:
         import torch
         from transformers import AutoModel, AutoTokenizer
 
+        dtype = torch.float16 if self.emb_device.startswith("cuda") else torch.float32
         self._tok = AutoTokenizer.from_pretrained(str(EMB_MODEL_DIR), padding_side="left")
-        self._model = AutoModel.from_pretrained(str(EMB_MODEL_DIR), dtype=torch.float16)
+        self._model = AutoModel.from_pretrained(str(EMB_MODEL_DIR), dtype=dtype)
         self._model = self._model.to(self.emb_device).eval()
 
     def embed_query(self, query: str) -> np.ndarray:
@@ -110,6 +112,27 @@ class HybridRetriever:
                 if self.chunks[i]["company"] in mentioned:
                     fused[i] += company_boost / (rrf_k + 1)
 
+        # 5) 报告期间消歧：问题未指明“半年/中期”时默认偏好年度报告，反之亦然
+        semi_words = ("半年", "中期", "中报", "上半", "H1", "半期")
+        prefer = "semi" if any(w in query for w in semi_words) else "annual"
+        for i in fused:
+            if self.chunks[i]["report_type"] == prefer:
+                fused[i] += 0.5 / (rrf_k + 1)
+
+        # 6) 叙述型对比数据加权：含"营业收入/净利润 + 同比/较上年"的正文块
+        #    （管理层讨论中的表述口径通常比报表附表更直接，避免单表数字歧义）
+        for i in fused:
+            t = self.chunks[i]["text"] or ""
+            if ("营业收入" in t or "净利润" in t) and ("同比" in t or "较上年" in t):
+                fused[i] += 0.2 / (rrf_k + 1)
+
+        # 7) "归母"类问题的口径定向：问题点名归母/上市公司股东时，
+        #    加权含"归属于上市公司股东的净利润"字样的块，避开母公司/净利润总额混淆
+        if any(w in query for w in ("归母", "归属于上市公司", "归属于母公司")):
+            for i in fused:
+                if "归属于上市公司股东的净利润" in (self.chunks[i]["text"] or ""):
+                    fused[i] += 0.35 / (rrf_k + 1)
+
         ranked = sorted(fused.items(), key=lambda x: -x[1])[:k]
         out = []
         for i, score in ranked:
@@ -134,7 +157,8 @@ SYSTEM_PROMPT = (
     "2. 引用数字时保持与资料一致（含单位与口径），不要换算或推测；\n"
     "3. 在每处引用的事实后标注来源编号，如 [1]、[2]（编号对应【资料】中各条目）；\n"
     "4. 若【资料】不足以回答，请直接说明“提供的资料中未找到相关信息”，不要强行作答；\n"
-    "5. 回答简洁：先给结论，再补充必要细节；如涉及多家公司对比，分条列出。"
+    "5. 涉及公司整体层面的财务数据（营收、净利润等）时，优先采用管理层讨论与分析中的表述口径（通常为合并口径）并注明；若仅有母公司口径数据，必须明确说明“（母公司口径）”；\n"
+    "6. 回答简洁：先给结论，再补充必要细节；如涉及多家公司对比，分条列出。"
 )
 
 
@@ -157,13 +181,18 @@ class AnswerEngine:
         self._model = self._model.to(self.device).eval()
 
     def generate(self, question: str, evidence: list[dict], max_new_tokens: int = 640,
-                 max_ctx_chars: int = 1800) -> str:
+                 total_ctx_chars: int = 3000, max_chunks: int = 10) -> str:
+        """证据预算控制：合成只用前 max_chunks 条证据，且全部证据合计不超过
+        total_ctx_chars 字符（逐条均分）。经实测，提示词超过 ~2.4k token 后
+        6GB 显存会退化到 WDDM 换页甚至 OOM（生成速度 13 tok/s → 0.5 tok/s）。"""
         import torch
 
         self._ensure()
+        evidence = evidence[:max_chunks]
+        per = max(200, total_ctx_chars // max(1, len(evidence)))
         parts = []
         for i, e in enumerate(evidence):
-            text = (e["text"] or "")[:max_ctx_chars]
+            text = (e["text"] or "")[:per]
             parts.append(f"[{i + 1}] 《{e['company']}》{e['report_label']}｜{e['section']}｜第{e['page']}页\n{text}")
         user = f"【问题】{question}\n\n【资料】\n" + "\n\n".join(parts)
         messages = [{"role": "system", "content": SYSTEM_PROMPT},
@@ -175,11 +204,22 @@ class AnswerEngine:
             prompt = self._tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         with torch.no_grad():
             inputs = self._tok([prompt], return_tensors="pt").to(self.device)
+            t0 = time.time()
             out = self._model.generate(
                 **inputs, max_new_tokens=max_new_tokens, do_sample=False,
                 repetition_penalty=1.05, eos_token_id=self._tok.eos_token_id)
+            self.last_stats = {
+                "prompt_tokens": int(inputs["input_ids"].shape[1]),
+                "new_tokens": int(out.shape[1] - inputs["input_ids"].shape[1]),
+                "seconds": round(time.time() - t0, 1),
+            }
         gen = out[0][inputs["input_ids"].shape[1]:]
-        return self._tok.decode(gen, skip_special_tokens=True).strip()
+        text = self._tok.decode(gen, skip_special_tokens=True).strip()
+        try:
+            torch.cuda.empty_cache()  # 释放本次生成的临时显存，防止累积碎片
+        except Exception:  # noqa: BLE001
+            pass
+        return text
 
 
 # ================================================================ 一站式

@@ -53,7 +53,8 @@ def build_doc_text(c: dict, max_chars: int = 1600) -> str:
 
 
 # ---------------------------------------------------------------- 向量
-def build_embeddings(chunks: list[dict], device: str, batch_size: int, logger) -> np.ndarray:
+def build_embeddings(chunks: list[dict], device: str, batch_size: int, logger,
+                     max_length: int = 1024) -> np.ndarray:
     import torch
     import torch.nn.functional as F
     from transformers import AutoModel, AutoTokenizer
@@ -70,7 +71,7 @@ def build_embeddings(chunks: list[dict], device: str, batch_size: int, logger) -
     with torch.no_grad():
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
-            enc = tok(batch, padding=True, truncation=True, max_length=1024, return_tensors="pt").to(device)
+            enc = tok(batch, padding=True, truncation=True, max_length=max_length, return_tensors="pt").to(device)
             out = model(**enc)
             last = out.last_hidden_state
             mask = enc["attention_mask"]
@@ -176,6 +177,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="构建混合检索索引")
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     ap.add_argument("--batch-size", type=int, default=32)
+    ap.add_argument("--max-length", type=int, default=1024, help="嵌入截断长度（token）")
     ap.add_argument("--limit", type=int, default=0, help="只处理前 N 条（调试用）")
     args = ap.parse_args()
 
@@ -189,7 +191,7 @@ def main() -> None:
         sys.exit(1)
     logger.info("载入 %d 个 chunk", len(chunks))
 
-    emb = build_embeddings(chunks, args.device, args.batch_size, logger)
+    emb = build_embeddings(chunks, args.device, args.batch_size, logger, max_length=args.max_length)
     np.save(IDX_DIR / "embeddings.npy", emb)
     with open(IDX_DIR / "chunk_ids.json", "w", encoding="utf-8") as f:
         json.dump([c["chunk_id"] for c in chunks], f, ensure_ascii=False)

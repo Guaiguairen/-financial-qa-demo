@@ -1,0 +1,18 @@
+# 主环境（Python 3.12）：数据下载 → 切块 → 索引 → 问答页面 → 评测
+# 安装：
+#   uv venv .venv-kb --python 3.12
+#   uv pip install --python .venv-kb\Scripts\python.exe -r requirements.txt
+# torch（CUDA 版）需单独安装，见 README「环境准备」一节。
+
+requests==2.34.2
+pyyaml==6.0.3
+jieba==0.42.1
+flask==3.1.3
+pymupdf==1.28.2
+tqdm==4.70.1
+numpy==2.5.3
+transformers==5.17.0
+tokenizers==0.23.2
+accelerate==1.15.0
+safetensors==0.8.0
+modelscope==1.40.1
